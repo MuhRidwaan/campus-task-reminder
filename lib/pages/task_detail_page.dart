@@ -11,7 +11,6 @@ class TaskDetailPage extends StatelessWidget {
 
   const TaskDetailPage({super.key, required this.task});
 
-  // Fungsi helper untuk membuka URL
   Future<void> _launchURL(String url) async {
     final Uri uri = Uri.parse(url);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -22,26 +21,35 @@ class TaskDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final summary = task['summary'] as String? ?? 'Detail Tugas';
-    // REVISI: Bersihkan teks deskripsi dari karakter aneh
-    final rawDescription =
-        task['description'] as String? ?? 'Tidak ada deskripsi.';
-    final description =
-        rawDescription.replaceAll('\\n', '\n').replaceAll('\\,', ',');
-
-    final deadline = Provider.of<TaskProvider>(context, listen: false)
-        .getDateTimeFromTask(task);
+    final description = (task['description'] as String? ?? 'Tidak ada deskripsi.').replaceAll('\\n', '\n').replaceAll('\\,', ',');
+    final deadline = context.read<TaskProvider>().getDateTimeFromTask(task);
+    final uid = task['uid'] as String?;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(summary),
+        title: Text(summary, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
-          // Tombol Share
+          if (uid != null)
+            Consumer<TaskProvider>(
+              builder: (context, taskProvider, child) {
+                final isPriority = taskProvider.isTaskPriority(uid);
+                return IconButton(
+                  icon: Icon(
+                    isPriority ? Icons.star : Icons.star_border,
+                    color: isPriority ? Colors.amber : null,
+                  ),
+                  tooltip: 'Tandai sebagai Prioritas',
+                  onPressed: () {
+                    taskProvider.toggleTaskPriority(uid);
+                  },
+                );
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.share),
             onPressed: () {
               final deadlineText = deadline != null
-                  ? DateFormat('d MMM yyyy, HH:mm', 'id_ID')
-                      .format(deadline.toLocal())
+                  ? DateFormat('d MMM yyyy, HH:mm', 'id_ID').format(deadline.toLocal())
                   : 'Tidak ada deadline';
               Share.share(
                 'Jangan lupa tugas:\n\n*${summary}*\nDeadline: ${deadlineText}\n\n_Powered by Campus Task Reminder_',
@@ -56,37 +64,49 @@ class TaskDetailPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Info Deadline
             if (deadline != null)
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.timer_outlined, color: Colors.blue),
-                  title: const Text('Deadline',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(DateFormat('EEEE, d MMMM yyyy, HH:mm', 'id_ID')
-                      .format(deadline.toLocal())),
+                  title: const Text('Deadline', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(DateFormat('EEEE, d MMMM yyyy, HH:mm', 'id_ID').format(deadline.toLocal())),
                 ),
               ),
             const SizedBox(height: 16),
 
-            // Deskripsi
+            if (uid != null)
+              Card(
+                child: Consumer<TaskProvider>(
+                  builder: (context, taskProvider, child) {
+                    return SwitchListTile(
+                      title: const Text('Mode Studi Intensif', style: TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: const Text('Dapatkan pengingat setiap hari (19:00) untuk tugas ini.'),
+                      value: taskProvider.isIntensiveStudy(uid),
+                      onChanged: (bool value) {
+                        taskProvider.toggleIntensiveStudy(uid);
+                      },
+                      secondary: const Icon(Icons.school),
+                    );
+                  },
+                ),
+              ),
+
+            const SizedBox(height: 16),
+
             Text('Deskripsi:', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
 
-            // REVISI: Gunakan Linkify untuk membuat link bisa diklik
             Linkify(
               onOpen: (link) => _launchURL(link.url),
               text: description,
               style: Theme.of(context).textTheme.bodyLarge,
-              linkStyle: const TextStyle(
-                  color: Colors.blue, decoration: TextDecoration.underline),
+              linkStyle: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
             ),
 
             const SizedBox(height: 24),
             const Divider(),
             const SizedBox(height: 24),
 
-            // Tombol Aksi
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -108,3 +128,4 @@ class TaskDetailPage extends StatelessWidget {
     );
   }
 }
+

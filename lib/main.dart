@@ -1,3 +1,4 @@
+import 'dart:io'; // REVISI: Tambahkan impor ini
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart';
@@ -15,7 +16,16 @@ import 'pages/main_scaffold.dart';
 import 'pages/url_input_page.dart';
 import 'providers/task_provider.dart';
 
-// --- Global Objects ---
+// REVISI: Kelas baru untuk mengatasi masalah sertifikat SSL
+class MyHttpOverrides extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) {
+    return super.createHttpClient(context)
+      ..badCertificateCallback =
+          (X509Certificate cert, String host, int port) => true;
+  }
+}
+
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 FlutterLocalNotificationsPlugin();
 
@@ -35,12 +45,12 @@ const AndroidNotificationChannel testChannel = AndroidNotificationChannel(
   importance: Importance.max, playSound: true,
 );
 
-// REVISI: Fungsi callback untuk Workmanager (harus top-level)
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
-      // Inisialisasi service yang dibutuhkan di dalam background isolate
+      // REVISI: Aktifkan juga override di background task
+      HttpOverrides.global = MyHttpOverrides();
       await _initializeDependencies();
 
       final prefs = await SharedPreferences.getInstance();
@@ -48,17 +58,15 @@ void callbackDispatcher() {
       final lastCache = prefs.getString('task_cache');
 
       if (url == null || url.isEmpty) {
-        return Future.value(true); // Tidak ada URL, hentikan
+        return Future.value(true);
       }
 
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
-        // Bandingkan data baru dengan cache
         if (response.body != lastCache) {
           await prefs.setString('task_cache', response.body);
 
-          // Gunakan TaskProvider secara lokal untuk parsing dan menjadwalkan notif
           final taskProvider = TaskProvider();
           taskProvider.parseAndSetTasks(response.body);
 
@@ -73,16 +81,19 @@ void callbackDispatcher() {
       return Future.value(true);
     } catch (e) {
       debugPrint("Error in background task: $e");
-      return Future.value(false); // Gagal
+      return Future.value(false);
     }
   });
 }
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // REVISI: Aktifkan override SSL di sini
+  HttpOverrides.global = MyHttpOverrides();
+
   await _initializeDependencies();
 
-  // REVISI: Inisialisasi Workmanager
   await Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
 
   final prefs = await SharedPreferences.getInstance();
@@ -91,7 +102,6 @@ Future<void> main() async {
   runApp(MoodleTaskApp(initialUrl: icsUrl));
 }
 
-// ... sisa kode main.dart ...
 Future<void> _initializeDependencies() async {
   await initializeDateFormatting('id_ID', null);
 

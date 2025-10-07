@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'task_detail_page.dart';
-import '../providers/task_provider.dart';
+// REVISI: Menggunakan impor absolut untuk konsistensi
+import 'package:uai_notify/pages/task_detail_page.dart';
+import 'package:uai_notify/providers/task_provider.dart';
 
 class TasksPage extends StatelessWidget {
   const TasksPage({super.key});
@@ -80,7 +81,6 @@ class TasksPage extends StatelessWidget {
     }
 
     return RefreshIndicator(
-      // REVISI: Panggil fungsi refresh dari server
       onRefresh: () => taskProvider.refreshTasksFromServer(),
       child: ListView.builder(
         itemCount: taskProvider.tasks.length,
@@ -115,17 +115,14 @@ class TasksPage extends StatelessWidget {
             courseDisplayString = '';
           }
 
+          final isPriority = taskProvider.isTaskPriority(uid);
+
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             color: isOverdue ? Colors.red[50] : (isCompleted ? Colors.grey[200] : Colors.white),
             child: ListTile(
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => TaskDetailPage(task: task),
-                  ),
-                );
+                Navigator.push(context, MaterialPageRoute(builder: (context) => TaskDetailPage(task: task)));
               },
               leading: Checkbox(
                 value: isCompleted,
@@ -149,13 +146,23 @@ class TasksPage extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                   ],
-                  Text(
-                    summary ?? 'Tanpa Judul',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isOverdue ? Colors.red[800] : Colors.black87,
-                      decoration: isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
-                    ),
+                  Row(
+                    children: [
+                      if (isPriority) const Padding(
+                        padding: EdgeInsets.only(right: 4.0),
+                        child: Icon(Icons.local_fire_department, color: Colors.red, size: 16),
+                      ),
+                      Expanded(
+                        child: Text(
+                          summary ?? 'Tanpa Judul',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: isOverdue ? Colors.red[800] : Colors.black87,
+                            decoration: isCompleted ? TextDecoration.lineThrough : TextDecoration.none,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

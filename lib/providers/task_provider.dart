@@ -16,25 +16,46 @@ class TaskProvider with ChangeNotifier {
   bool _isOffline = false;
   String _icsUrl = '';
 
+  Set<String> _priorityTaskUids = {};
+  Set<String> _intensiveStudyUids = {};
+
   List<Map<String, dynamic>> get allTasks => _tasks;
+  Set<String> get priorityTaskUids => _priorityTaskUids;
+  Set<String> get intensiveStudyUids => _intensiveStudyUids;
+
   List<Map<String, dynamic>> get tasks {
+    List<Map<String, dynamic>> filteredTasks;
     switch (_currentFilter) {
       case TaskFilter.upcoming:
-        return _tasks.where((task) {
+        filteredTasks = _tasks.where((task) {
           final deadline = getDateTimeFromTask(task);
           return deadline != null && deadline.isAfter(DateTime.now()) && !_completedTaskUids.contains(task['uid']);
         }).toList();
+        break;
       case TaskFilter.completed:
-        return _tasks.where((task) => _completedTaskUids.contains(task['uid'])).toList();
+        filteredTasks = _tasks.where((task) => _completedTaskUids.contains(task['uid'])).toList();
+        break;
       case TaskFilter.overdue:
-        return _tasks.where((task) {
+        filteredTasks = _tasks.where((task) {
           final deadline = getDateTimeFromTask(task);
           return deadline != null && deadline.isBefore(DateTime.now()) && !_completedTaskUids.contains(task['uid']);
         }).toList();
+        break;
       case TaskFilter.all:
       default:
-        return _tasks;
+        filteredTasks = _tasks;
     }
+    filteredTasks.sort((a, b) {
+      final isAPriority = _priorityTaskUids.contains(a['uid']);
+      final isBPriority = _priorityTaskUids.contains(b['uid']);
+      if (isAPriority && !isBPriority) return -1;
+      if (!isAPriority && isBPriority) return 1;
+
+      final aDate = getDateTimeFromTask(a) ?? DateTime(0);
+      final bDate = getDateTimeFromTask(b) ?? DateTime(0);
+      return aDate.compareTo(bDate);
+    });
+    return filteredTasks;
   }
 
   bool get isLoading => _isLoading;
@@ -57,9 +78,10 @@ class TaskProvider with ChangeNotifier {
 
   TaskProvider() {
     _loadCompletedTasks();
+    _loadPriorityTasks();
+    _loadIntensiveStudyTasks();
   }
 
-  // REVISI: Tambahkan error handling yang lebih kuat
   Future<void> loadInitialData(String url) async {
     _icsUrl = url;
     _isLoading = true;
@@ -68,38 +90,32 @@ class TaskProvider with ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       final cachedData = prefs.getString('task_cache');
-
       if (cachedData != null) {
-        parseAndSetTasks(cachedData);
+        await parseAndSetTasks(cachedData);
       }
     } catch (e) {
       _error = "Gagal memuat data cache: $e";
     } finally {
-      // Apapun yang terjadi, pastikan spinner awal dimatikan
       _isLoading = false;
       notifyListeners();
     }
-
-    // Setelah UI awal ditampilkan, ambil data baru dari server
     await refreshTasksFromServer();
   }
 
   Future<void> refreshTasksFromServer() async {
     if (_icsUrl.isEmpty) return;
-
     _isOffline = false;
     _error = null;
-    notifyListeners(); // Beri tahu UI bahwa proses refresh dimulai
+    notifyListeners();
 
     try {
       final response = await http.get(Uri.parse(_icsUrl));
       if (response.statusCode == 200) {
         final prefs = await SharedPreferences.getInstance();
         final cachedData = prefs.getString('task_cache');
-
         if (response.body != cachedData) {
           await prefs.setString('task_cache', response.body);
-          parseAndSetTasks(response.body);
+          await parseAndSetTasks(response.body);
         }
       } else {
         throw Exception('Gagal memuat: Status ${response.statusCode}');
@@ -107,26 +123,52 @@ class TaskProvider with ChangeNotifier {
     } catch (e) {
       _isOffline = true;
       _error = 'Gagal memperbarui. Menampilkan data offline.';
-      notifyListeners();
     }
+    notifyListeners();
   }
 
-
-  void parseAndSetTasks(String icsData) {
+  Future<void> parseAndSetTasks(String icsData) async {
     final iCalendar = ICalendar.fromString(icsData);
     final newTasks = (iCalendar.data).cast<Map<String, dynamic>>();
 
-    newTasks.sort((a, b) {
-      final DateTime aDate = getDateTimeFromTask(a) ?? DateTime(0);
-      final DateTime bDate = getDateTimeFromTask(b) ?? DateTime(0);
-      return aDate.compareTo(bDate);
-    });
-
     _tasks = newTasks;
-    loadCourseNames();
-    NotificationService.scheduleAllNotifications(_tasks);
+    await loadCourseNames();
+    await NotificationService.scheduleAllNotifications(_tasks, _courseNames, _priorityTaskUids, _intensiveStudyUids);
     notifyListeners();
   }
+
+  Future<void> _loadPriorityTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final priority = prefs.getStringList('priority_tasks') ?? [];
+    _priorityTaskUids = priority.toSet();
+    notifyListeners();
+  }
+
+  Future<void> _loadIntensiveStudyTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final intensive = prefs.getStringList('intensive_study_tasks') ?? [];
+    _intensiveStudyUids = intensive.toSet();
+    notifyListeners();
+  }
+
+  Future<void> toggleTaskPriority(String uid) async {
+    _priorityTaskUids.contains(uid) ? _priorityTaskUids.remove(uid) : _priorityTaskUids.add(uid);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('priority_tasks', _priorityTaskUids.toList());
+    await NotificationService.scheduleAllNotifications(_tasks, _courseNames, _priorityTaskUids, _intensiveStudyUids);
+    notifyListeners();
+  }
+
+  Future<void> toggleIntensiveStudy(String uid) async {
+    _intensiveStudyUids.contains(uid) ? _intensiveStudyUids.remove(uid) : _intensiveStudyUids.add(uid);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('intensive_study_tasks', _intensiveStudyUids.toList());
+    await NotificationService.scheduleAllNotifications(_tasks, _courseNames, _priorityTaskUids, _intensiveStudyUids);
+    notifyListeners();
+  }
+
+  bool isTaskPriority(String uid) => _priorityTaskUids.contains(uid);
+  bool isIntensiveStudy(String uid) => _intensiveStudyUids.contains(uid);
 
   Future<void> loadCourseNames() async {
     final prefs = await SharedPreferences.getInstance();

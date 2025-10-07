@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'tasks_page.dart';
-import 'notes_page.dart';
-import 'settings_page.dart';
-import '../providers/note_provider.dart';
-import '../providers/task_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'donation_page.dart';
-// REVISI: Pastikan tidak ada impor yang tidak perlu
+// REVISI: Menggunakan impor absolut untuk konsistensi
+import 'package:uai_notify/pages/tasks_page.dart';
+import 'package:uai_notify/pages/notes_page.dart';
+import 'package:uai_notify/pages/settings_page.dart';
+import 'package:uai_notify/providers/note_provider.dart';
+import 'package:uai_notify/providers/task_provider.dart';
+import 'package:uai_notify/pages/donation_page.dart';
 
 class MainScaffold extends StatefulWidget {
   final String icsUrl;
